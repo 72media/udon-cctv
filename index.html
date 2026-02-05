@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>CCTV CONTROL UDON | ระบบกล้องวงจรปิดเทศบาลอุดรธานี</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+<style>
+:root {
+    --primary: #0ea5e9;
+    --primary-dark: #0284c7;
+    --secondary: #64748b;
+    --bg-dark: #0f172a;
+    --bg-card: rgba(30, 41, 59, 0.95);
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --border: rgba(148, 163, 184, 0.2);
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --glass: rgba(15, 23, 42, 0.85);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    height: 100%;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg-dark);
+    color: var(--text-primary);
+    overflow: hidden;
+    line-height: 1.5;
+}
+
+/* Header & Clock */
+#header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: linear-gradient(90deg, var(--bg-dark) 0%, rgba(14, 165, 233, 0.1) 100%);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    z-index: 2000;
+    backdrop-filter: blur(10px);
+}
+
+#brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+#brand-logo {
+    height: 40px;
+    width: auto;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+    transition: transform 0.3s;
+}
+
+#brand-logo:hover {
+    transform: scale(1.05);
+}
+
+#brand-text {
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: 0.5px;
+    color: var(--text-primary);
+}
+
+#clockBar {
+    font-family: 'SF Mono', monospace;
+    font-size: 14px;
+    color: var(--primary);
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-shadow: 0 0 10px rgba(14, 165, 233, 0.3);
+}
+
+/* แผนที่ */
+#map {
+    position: absolute;
+    top: 40px;
+    bottom: 260px;
+    left: 0;
+    right: 0;
+    z-index: 1;
+}
+
+.leaflet-top.leaflet-left {
+    display: none;
+}
+
+/* Custom Zoom Control */
+.leaflet-control-zoom {
+    border: none !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+}
+
+.leaflet-control-zoom a {
+    background: var(--bg-card) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border) !important;
+    width: 36px !important;
+    height: 36px !important;
+    line-height: 36px !important;
+    font-size: 18px !important;
+    transition: all 0.2s;
+}
+
+.leaflet-control-zoom a:hover {
+    background: var(--primary) !important;
+    color: white !important;
+}
+
+/* Sidebar */
+#sidebar {
+    position: absolute;
+    top: 80px;
+    left: 15px;
+    width: 340px;
+    background: var(--bg-card);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 3000;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+}
+
+#sidebar.collapsed {
+    max-height: 56px;
+    opacity: 0.9;
+}
+
+#sidebar:hover {
+    opacity: 1;
+}
+
+#sideHeader {
+    padding: 16px;
+    background: linear-gradient(90deg, rgba(14, 165, 233, 0.1) 0%, transparent 100%);
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    transition: all 0.2s;
+}
+
+#sideHeader:hover {
+    background: linear-gradient(90deg, rgba(14, 165, 233, 0.2) 0%, transparent 100%);
+}
+
+#collapseIcon {
+    transition: transform 0.3s;
+    color: var(--primary);
+}
+
+#sidebar.collapsed #collapseIcon {
+    transform: rotate(-90deg);
+}
+
+#searchBox {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+#searchBox input {
+    width: 100%;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: rgba(15, 23, 42, 0.6);
+    color: var(--text-primary);
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s;
+}
+
+#searchBox input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+}
+
+#searchBox input::placeholder {
+    color: var(--text-secondary);
+}
+
+#cameraList {
+    max-height: calc(55vh - 60px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--secondary) transparent;
+}
+
+#cameraList::-webkit-scrollbar {
+    width: 6px;
+}
+
+#cameraList::-webkit-scrollbar-thumb {
+    background: var(--secondary);
+    border-radius: 3px;
+}
+
+#sidebar.collapsed #searchBox,
+#sidebar.collapsed #cameraList {
+    display: none;
+}
+
+.camera-item {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.2s;
+    font-size: 13px;
+}
+
+.camera-item:hover {
+    background: rgba(14, 165, 233, 0.1);
+    padding-left: 20px;
+}
+
+.camera-item::before {
+    content: "📹";
+    font-size: 14px;
+    opacity: 0.7;
+}
+
+.camera-item:hover::before {
+    opacity: 1;
+}
+
+/* Map Switcher - Professional Style */
+.map-switcher {
+    position: absolute;
+    top: 70px;
+    right: 50px;
+    z-index: 1000;
+    background: var(--glass);
+    border-radius: 12px;
+    padding: 8px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 160px;
+}
+
+.map-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.05);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+    text-align: left;
+    position: relative;
+    overflow: hidden;
+}
+
+.map-btn::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+    transform: translateX(-100%);
+    transition: transform 0.5s;
+}
+
+.map-btn:hover::before {
+    transform: translateX(100%);
+}
+
+.map-btn:hover {
+    background: rgba(255,255,255,0.1);
+    color: var(--text-primary);
+    transform: translateX(-2px);
+}
+
+.map-btn.active {
+    background: linear-gradient(135deg, rgba(14, 165, 233, 0.2) 0%, rgba(14, 165, 233, 0.05) 100%);
+    border-color: var(--primary);
+    color: var(--primary);
+    box-shadow: 0 0 20px rgba(14, 165, 233, 0.2);
+}
+
+.map-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+}
+
+.map-btn.active .map-icon {
+    transform: scale(1.1);
+}
+
+.icon-satellite {
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+
+.icon-opentopo {
+    background: linear-gradient(135deg, #78716c 0%, #57534e 100%);
+}
+
+/* กล้องล่าง - Modern Design */
+#multiView {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 260px;
+    background: linear-gradient(0deg, var(--bg-dark) 0%, rgba(15,23,42,0.95) 100%);
+    display: flex;
+    overflow-x: auto;
+    gap: 16px;
+    padding: 16px;
+    align-items: flex-start;
+    border-top: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary) transparent;
+}
+
+#multiView::-webkit-scrollbar {
+    height: 8px;
+}
+
+#multiView::-webkit-scrollbar-track {
+    background: rgba(255,255,255,0.05);
+    border-radius: 4px;
+}
+
+#multiView::-webkit-scrollbar-thumb {
+    background: var(--primary);
+    border-radius: 4px;
+}
+
+.camBox {
+    width: 300px;
+    min-width: 300px;
+    background: var(--bg-card);
+    border-radius: 16px;
+    padding: 12px;
+    flex: 0 0 auto;
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+}
+
+.camBox::before {
+    content: "● LIVE";
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(239, 68, 68, 0.9);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 4px 8px;
+    border-radius: 4px;
+    letter-spacing: 1px;
+    z-index: 10;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.camBox video {
+    width: 100%;
+    border-radius: 12px;
+    background: #000;
+    aspect-ratio: 16/9;
+    object-fit: cover;
+}
+
+.camTitle {
+    font-weight: 700;
+    margin-bottom: 10px;
+    font-size: 14px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 50px;
+}
+
+.camTitle.small { font-size: 12px; }
+.camTitle.xsmall { font-size: 11px; }
+
+.cam-controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.cam-btn {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.cam-btn-capture {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: white;
+}
+
+.cam-btn-capture:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(14, 165, 233, 0.4);
+}
+
+.cam-btn-close {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.cam-btn-close:hover {
+    background: rgba(239, 68, 68, 0.2);
+}
+
+/* Popup Styling */
+.leaflet-popup-content-wrapper {
+    background: var(--bg-card) !important;
+    border-radius: 16px !important;
+    border: 1px solid var(--border) !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4) !important;
+    backdrop-filter: blur(20px);
+}
+
+.leaflet-popup-content {
+    margin: 16px !important;
+    color: var(--text-primary) !important;
+}
+
+.leaflet-popup-tip {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border) !important;
+}
+
+.popup-header {
+    font-weight: 700;
+    font-size: 15px;
+    margin-bottom: 8px;
+    color: var(--text-primary);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.popup-coords {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 12px;
+    font-family: 'SF Mono', monospace;
+    background: rgba(0,0,0,0.3);
+    padding: 8px;
+    border-radius: 8px;
+}
+
+.popup-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px;
+    margin: 6px 0;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.popup-btn-camera {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: white;
+}
+
+.popup-btn-camera:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(14, 165, 233, 0.4);
+}
+
+.popup-btn-streetview {
+    background: rgba(255,255,255,0.1);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+}
+
+.popup-btn-streetview:hover {
+    background: rgba(255,255,255,0.15);
+    border-color: var(--primary);
+}
+
+/* Stats Badge */
+#statsBadge {
+    position: absolute;
+    bottom: 270px;
+    right: 15px;
+    background: var(--glass);
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(20px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.stat-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--success);
+    border-radius: 50%;
+    animation: blink 2s infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    #header {
+        height: 50px;
+    }
+    
+    #brand-logo {
+        height: 32px;
+    }
+    
+    #brand-text {
+        font-size: 14px;
+    }
+    
+    #sidebar {
+        width: calc(100% - 30px);
+        max-height: 40vh;
+        top: 70px;
+    }
+    
+    .map-switcher {
+        top: 60px;
+        right: 10px;
+        flex-direction: row;
+        min-width: auto;
+    }
+    
+    .map-btn {
+        padding: 8px;
+    }
+    
+    .map-btn span:not(.map-icon) {
+        display: none;
+    }
+    
+    #map {
+        top: 50px;
+    }
+}
+</style>
+</head>
+<body>
+
+<div id="header">
+    <div id="brand">
+        <img id="brand-logo" src="https://www.udoncity.go.th/frontend/web/logo/logo.png" alt="เทศบาลอุดรธานี">
+        <span id="brand-text">CCTV CONTROL UDON</span>
+    </div>
+    <div id="clockBar">--/--/---- --:--:--</div>
+</div>
+
+<div id="sidebar" class="collapsed">
+  <div id="sideHeader">
+    <span>📷 กล้องเทศบาลอุดร 24 ตัว</span>
+    <span id="collapseIcon">▼</span>
+  </div>
+  <div id="searchBox">
+    <input id="search" placeholder="🔍 ค้นหากล้อง...">
+  </div>
+  <div id="cameraList"></div>
+</div>
+
+<!-- Map Switcher Control -->
+<div class="map-switcher">
+    <button class="map-btn active" onclick="switchMap('satellite')" id="btn-satellite">
+        <span class="map-icon icon-satellite">🛰️</span>
+        <span>ดาวเทียม</span>
+    </button>
+    <button class="map-btn" onclick="switchMap('opentopo')" id="btn-opentopo">
+        <span class="map-icon icon-opentopo">⛰️</span>
+        <span>OpenTopoMap</span>
+    </button>
+</div>
+
+<!-- Stats Badge -->
+<div id="statsBadge">
+    <span class="stat-dot"></span>
+    <span id="activeCams">0 กล้องกำลังทำงาน</span>
+</div>
+
+<div id="map"></div>
+<div id="multiView"></div>
+
+<script>
+function updateClock(){
+    let d = new Date();
+    let options = {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        weekday: 'long',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    };
+    let t = d.toLocaleString('th-TH', options);
+    clockBar.innerText = t;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+/* แผนที่ */
+var map = L.map('map', {zoomControl: false}).setView([17.405, 102.79], 13);
+L.control.zoom({position: 'topright'}).addTo(map);
+
+// สร้าง layer ทั้งสองแบบ
+var satelliteLayer = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+    maxZoom: 20,
+    attribution: '© Google'
+});
+
+var opentopoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    maxZoom: 17,
+    attribution: '© OpenTopoMap | © OpenStreetMap contributors'
+});
+
+// เริ่มต้นด้วยดาวเทียม
+satelliteLayer.addTo(map);
+
+// ตัวแปรเก็บสถานะแผนที่ปัจจุบัน
+var currentMap = 'satellite';
+
+// ฟังก์ชันสลับแผนที่
+function switchMap(mapType) {
+    if (mapType === currentMap) return;
+    
+    if (mapType === 'satellite') {
+        map.removeLayer(opentopoLayer);
+        satelliteLayer.addTo(map);
+        document.getElementById('btn-satellite').classList.add('active');
+        document.getElementById('btn-opentopo').classList.remove('active');
+    } else {
+        map.removeLayer(satelliteLayer);
+        opentopoLayer.addTo(map);
+        document.getElementById('btn-opentopo').classList.add('active');
+        document.getElementById('btn-satellite').classList.remove('active');
+    }
+    currentMap = mapType;
+}
+
+window.switchMap = switchMap;
+
+// ไอคอนกล้องแบบเดิมจากเทศบาลอุดร
+var camIcon = L.icon({
+    iconUrl: "https://i.ibb.co/4nSt8YfF/security-camera-64.png",
+    iconSize: [32, 32],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -14]
+});
+
+/* กล้อง */
+var cameras = [
+{id:6,title:"วงเวียนกรมหลวงประจักษ์ศิลปาคม SPD",lat:17.40033339,lng:102.79507307,stream:"https://streaming.udoncity.go.th:1935/live/cctv_121.stream/playlist.m3u8"},
+{id:9,title:"แยกสี่ศรัทธา ด้านถนนสี่ศรัทธา",lat:17.40603491,lng:102.79035978,stream:"https://streaming.udoncity.go.th:1935/live/Axis_IP754.stream/playlist.m3u8"},
+{id:10,title:"แยกอาชีวศึกษา ด้านถนนประชารักษา",lat:17.410141,lng:102.777509,stream:"https://streaming.udoncity.go.th:1935/live/Axis_7.21.stream/playlist.m3u8"},
+{id:11,title:"แยกอาชีวศึกษา ด้านถนนเพาะนิยม",lat:17.409703,lng:102.778214,stream:"https://streaming.udoncity.go.th:1935/live/Axis_IP724.stream/playlist.m3u8"},
+{id:12,title:"แยกเรือนจำ ถนนหมากแข้ง",lat:17.405132,lng:102.786823,stream:"https://streaming.udoncity.go.th:1935/live/Axis_IP729.stream/playlist.m3u8"},
+{id:14,title:"แยกจุดกลับรถหน้าตลาดเมืองทองขาออก",lat:17.390528,lng:102.819876,stream:"https://streaming.udoncity.go.th:1935/live/Axis_12_30.stream/playlist.m3u8"},
+{id:15,title:"แยกตลาดไทยอีสานแยกถนนสุระการ",lat:17.403039,lng:102.796105,stream:"https://streaming.udoncity.go.th:1935/live/Axis_12_21.stream/playlist.m3u8"},
+{id:16,title:"แยกปากซอยประชาสันติ",lat:17.396411,lng:102.808966,stream:"https://streaming.udoncity.go.th:1935/live/Axis_12_27.stream/playlist.m3u8"},
+{id:17,title:"แยกหน้าโรงเรียนอุดรคริสเตียน",lat:17.423573,lng:102.790767,stream:"https://streaming.udoncity.go.th:1935/live/Axis_12_53.stream/playlist.m3u8"},
+{id:18,title:"แยกหน้าโรงเรียนอุดรพิทยานุกูล ถนนโพศรี",lat:17.4071708,lng:102.78317166,stream:"https://streaming.udoncity.go.th:1935/live/Axis_IP727.stream/playlist.m3u8"},
+{id:19,title:"แยกชลประทาน",lat:17.41359314,lng:102.7919125,stream:"https://streaming.udoncity.go.th:1935/live/Axis_12_45.stream/playlist.m3u8"},
+{id:20,title:"แยกธิเบต",lat:17.409016,lng:102.800144,stream:"https://streaming.udoncity.go.th:1935/live/Axis_12_43.stream/playlist.m3u8"},
+{id:21,title:"แยกหน้าสถานีรถไฟ",lat:17.40431538,lng:102.80404772,stream:"https://streaming.udoncity.go.th:1935/live/Axis_12_33.stream/playlist.m3u8"},
+{id:22,title:"แยกสถานีรถไฟ ถนนประจักษ์",lat:17.40406428,lng:102.80401582,stream:"https://streaming.udoncity.go.th:1935/live/Axis_12_34.stream/playlist.m3u8"},
+{id:23,title:"แยกเซ็นทรัล",lat:17.40434572,lng:102.79999231,stream:"https://streaming.udoncity.go.th:1935/live/Axis_12_38.stream/playlist.m3u8"},
+{id:24,title:"แยกเทพารักษ์",lat:17.422149,lng:102.777904,stream:"https://streaming.udoncity.go.th:1935/live/Bosch_IP2.3.stream/playlist.m3u8"},
+{id:25,title:"แยก VTแหนมเนือง",lat:17.41351762,lng:102.77730793,stream:"https://streaming.udoncity.go.th:1935/live/Bosch_IP2.9.stream/playlist.m3u8"},
+{id:26,title:"แยกต้อยลาบเป็ด",lat:17.40363727,lng:102.78402813,stream:"https://streaming.udoncity.go.th:1935/live/Bosch_IP2.17.stream/playlist.m3u8"},
+{id:27,title:"แยกหลังโรงเรียนบ้านหมากแข้ง",lat:17.4006241,lng:102.78921526,stream:"https://streaming.udoncity.go.th:1935/live/Bosch_IP2.20.stream/playlist.m3u8"},
+{id:28,title:"ถนนเพาะนิยม (อนุบาลลูกรัก)",lat:17.42245522,lng:102.77767804,stream:"https://streaming.udoncity.go.th:1935/live/Bosch_IP2.2.stream/playlist.m3u8"},
+{id:29,title:"แยกตะวันแดง",lat:17.40770718,lng:102.80287534,stream:"https://streaming.udoncity.go.th:1935/live/Bosch_IP2.27.stream/playlist.m3u8"},
+{id:30,title:"แยกสนามกีฬาเวสสุวรรณ",lat:17.39593422,lng:102.80983996,stream:"https://streaming.udoncity.go.th:1935/live/Bosch_IP2.30.stream/playlist.m3u8"},
+{id:32,title:"แยกร่วมทวี ถนนนิตโย",lat:17.4015608,lng:102.79878683,stream:"https://streaming.udoncity.go.th:1935/live/Axis_12_22.stream/playlist.m3u8"},
+{id:33,title:"แยกคอกม้า",lat:17.409456,lng:102.775091,stream:"https://streaming.udoncity.go.th:1935/live/Axis_12_52.stream/playlist.m3u8"}
+];
+
+var listDiv = document.getElementById("cameraList");
+var multi = document.getElementById("multiView");
+var activeCameras = 0;
+
+function updateStats() {
+    document.getElementById('activeCams').textContent = activeCameras + " กล้องกำลังทำงาน";
+}
+
+function playStream(v, url){
+    if(Hls.isSupported()){
+        let h = new Hls();
+        h.loadSource(url);
+        h.attachMedia(v);
+    } else {
+        v.src = url;
+    }
+}
+
+// ฟังก์ชันเปิด Street View
+function openStreetView(lat, lng, title) {
+    const directUrl = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lng}`;
+    window.open(directUrl, '_blank', 'width=800,height=600');
+}
+
+cameras.forEach(cam => {
+    let m = L.marker([cam.lat, cam.lng], {icon: camIcon}).addTo(map)
+    .bindPopup(`
+        <div class="popup-header">${cam.title}</div>
+        <div class="popup-coords">
+            📍 ${cam.lat.toFixed(6)}, ${cam.lng.toFixed(6)}
+        </div>
+        <button onclick="addMulti('${cam.title}','${cam.stream}')" class="popup-btn popup-btn-camera">
+            📹 เปิดกล้อง
+        </button>
+        <button onclick="openStreetView(${cam.lat}, ${cam.lng}, '${cam.title}')" class="popup-btn popup-btn-streetview">
+            🌏 ดูสตรีทวิว
+        </button>
+    `);
+
+    let item = document.createElement("div");
+    item.className = "camera-item";
+    item.textContent = cam.title;
+    item.onclick = () => {
+        map.setView([cam.lat, cam.lng], 17);
+        m.openPopup();
+    };
+    listDiv.appendChild(item);
+});
+
+window.addMulti = (title, stream) => {
+    // ตรวจสอบว่ามีกล้องนี้อยู่แล้วหรือไม่
+    const existing = [...multi.children].find(box => 
+        box.querySelector('.camTitle').textContent === title
+    );
+    if (existing) {
+        existing.scrollIntoView({behavior: 'smooth'});
+        return;
+    }
+
+    let box = document.createElement("div");
+    box.className = "camBox";
+
+    let t = document.createElement("div");
+    t.className = "camTitle";
+    t.textContent = title;
+    if(title.length > 28) t.classList.add("small");
+    if(title.length > 40) t.classList.add("xsmall");
+    box.appendChild(t);
+
+    let v = document.createElement("video");
+    v.autoplay = true;
+    v.muted = true;
+    v.controls = true;
+    v.playsInline = true;
+    box.appendChild(v);
+    
+    playStream(v, stream);
+    
+    activeCameras++;
+    updateStats();
+
+    let controls = document.createElement("div");
+    controls.className = "cam-controls";
+
+    let cap = document.createElement("button");
+    cap.className = "cam-btn cam-btn-capture";
+    cap.innerHTML = "📸 จับภาพ";
+    cap.onclick = () => {
+        let c = document.createElement("canvas");
+        c.width = v.videoWidth;
+        c.height = v.videoHeight;
+        c.getContext("2d").drawImage(v, 0, 0);
+        let a = document.createElement("a");
+        let timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        a.href = c.toDataURL();
+        a.download = `capture-${title}-${timestamp}.png`;
+        a.click();
+    };
+    controls.appendChild(cap);
+
+    let close = document.createElement("button");
+    close.className = "cam-btn cam-btn-close";
+    close.innerHTML = "✕ ปิด";
+    close.onclick = () => {
+        box.remove();
+        activeCameras--;
+        updateStats();
+    };
+    controls.appendChild(close);
+
+    box.appendChild(controls);
+    multi.appendChild(box);
+    box.scrollIntoView({behavior: 'smooth'});
+};
+
+window.openStreetView = openStreetView;
+
+search.oninput = e => {
+    let t = e.target.value.toLowerCase();
+    [...listDiv.children].forEach(d => {
+        d.style.display = d.textContent.toLowerCase().includes(t) ? "flex" : "none";
+    });
+};
+
+sideHeader.onclick = () => sidebar.classList.toggle("collapsed");
+</script>
+</body>
+</html>
